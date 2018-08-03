@@ -1,0 +1,11 @@
+diff -u bochs-2.2.6.orig/bx_debug/symbols.cc bochs-2.2.6.orig/bx_debug/symbols.cc
+--- bochs-2.2.6.orig/bx_debug/symbols.cc	2006-01-15 12:57:48.000000000 -0500
++++ bochs-2.2.6.orig/bx_debug/symbols.cc	2018-08-03 15:11:08.871740597 -0400
+@@ -92,6 +92,7 @@
+ #endif
+ 
+ using namespace std;
++using namespace __gnu_cxx;
+ 
+ struct symbol_entry_t
+ {

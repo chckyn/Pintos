@@ -22,19 +22,20 @@ cat $PINTOSDIR/src/misc/bochs-2.2.6-solaris-tty.patch | patch -p1
 cat $PINTOSDIR/src/misc/bochs-2.2.6-page-fault-segv.patch | patch -p1
 cat $PINTOSDIR/src/misc/bochs-2.2.6-paranoia.patch | patch -p1
 cat $PINTOSDIR/src/misc/bochs-2.2.6-gdbstub-ENN.patch | patch -p1
+cat $PINTOSDIR/src/misc/bochs-2.2.6-hash-map.patch | patch -p1
 if test "`uname -s`" = "SunOS"; then
     cat $PINTOSDIR/src/misc/bochs-2.2.6-solaris-link.patch | patch -p1
 fi
 CFGOPTS="--with-x --with-x11 --with-term --with-nogui --prefix=$DSTDIR"
+BOCHDIR=$(pwd)
 mkdir plain &&
         cd plain && 
         ../configure $CFGOPTS --enable-gdb-stub && 
         make && 
-        make install &&
-        cd ..
+        sudo make install
+cd $BOCHDIR
 mkdir with-dbg &&
         cd with-dbg &&
         ../configure --enable-debugger $CFGOPTS &&
         make &&
-        cp bochs $DSTDIR/bin/bochs-dbg &&
-        cd ..
+        sudo cp bochs $DSTDIR/bin/bochs-dbg
