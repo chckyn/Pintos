@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -145,6 +146,12 @@ thread_print_stats (void)
 {
   printf ("Thread: %lld idle ticks, %lld kernel ticks, %lld user ticks\n",
           idle_ticks, kernel_ticks, user_ticks);
+}
+
+bool
+thread_sleeping( struct thread *t )
+{
+  return ( t->ticks_when_ready - timer_ticks() ) > 0;
 }
 
 /* Creates a new kernel thread named NAME with the given initial
@@ -468,6 +475,9 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->ticks_when_ready = 0;
+  lock_init( &t->sleep_lock );
+  cond_init( &t->WAKE_UP );
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
@@ -486,17 +496,27 @@ alloc_frame (struct thread *t, size_t size)
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
-   return a thread from the run queue, unless the run queue is
-   empty.  (If the running thread can continue running, then it
-   will be in the run queue.)  If the run queue is empty, return
-   idle_thread. */
+   return a thread from the run queue, unless the run queue is empty or all
+   threads are sleeping.  (If the running thread can continue running, then it
+   will be in the run queue.) If the run queue is empty or all threads are
+   sleeping, return idle_thread.
+   */
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
-    return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  /* Interrupts must be disabled to prevent a woken up thread from interfering. */
+  ASSERT (intr_get_level () == INTR_OFF);
+  for (struct thread *t = list_begin (&ready_list); t != list_end (&ready_list);
+       t = list_next (t))
+    {
+      if ( !thread_sleeping( t ) ) {
+          lock_acquire( &t->sleep_lock );
+          cond_signal( &t->WAKE_UP, &t->sleep_lock );
+          lock_release( &t->sleep_lock );
+          return list_entry (list_remove (t), struct thread, elem);
+      }
+    }
+  return idle_thread;
 }
 
 /* Completes a thread switch by activating the new thread's page

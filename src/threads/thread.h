@@ -88,6 +88,9 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int64_t ticks_when_ready;
+    struct lock sleep_lock;
+    struct cond WAKE_UP;
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
@@ -112,6 +115,7 @@ void thread_start (void);
 
 void thread_tick (void);
 void thread_print_stats (void);
+bool thread_sleeping( struct thread * );
 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
