@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <random.h>
 #include <stdio.h>
+#include <inttypes.h>
 #include <string.h>
 #include "threads/flags.h"
 #include "threads/interrupt.h"
@@ -11,6 +12,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -19,6 +21,10 @@
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
+
+/* List of sleeping process in THREAD_SLEEPING state. This list is
+   sorted by soonest to wake up first. */
+static struct list sleeping_list;
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
@@ -68,8 +74,11 @@ static void init_thread (struct thread *, const char *name, int priority);
 static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
+static bool less_ticks_remaining( const struct list_elem *a, const struct list_elem *b, void *aux );
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+void thread_sleep_until( int64_t ready_tick );
+void wake_up_sleeping_threads(void);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -90,6 +99,7 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
+  list_init (&sleeping_list);
   list_init (&ready_list);
   list_init (&all_list);
 
@@ -146,6 +156,27 @@ thread_print_stats (void)
   printf ("Thread: %lld idle ticks, %lld kernel ticks, %lld user ticks\n",
           idle_ticks, kernel_ticks, user_ticks);
 }
+
+void
+thread_sleep_until( int64_t ready_tick )
+{
+  //printf( "(thread_sleep_until) called with READY_TICK=%" PRId64 "\n", ready_tick );
+  enum intr_level old_level;
+  struct thread *t = thread_current ();
+  t->ready_tick = ready_tick;
+  list_insert_ordered (&sleeping_list, &t->elem, &less_ticks_remaining, NULL );
+  old_level = intr_disable();
+  thread_block();
+  intr_set_level (old_level); // Interrupts must be re-enabled prior to continuing.
+}
+
+static bool less_ticks_remaining( const struct list_elem *a, const struct list_elem *b, void *aux )
+{
+  ASSERT( aux == NULL ); // AUX should not be used.
+  //printf("(less_ticks_remaining): %" PRId64 " < %" PRId64 "\n", list_entry( a, struct thread, elem )->ready_tick, list_entry( b, struct thread, elem )->ready_tick );
+  return list_entry( a, struct thread, elem )->ready_tick < list_entry( b, struct thread, elem )->ready_tick;
+}
+
 
 /* Creates a new kernel thread named NAME with the given initial
    PRIORITY, which executes FUNCTION passing AUX as the argument,
@@ -263,6 +294,7 @@ thread_name (void)
 struct thread *
 thread_current (void) 
 {
+  //printf("(thread_current): Called\n");
   struct thread *t = running_thread ();
   
   /* Make sure T is really a thread.
@@ -468,6 +500,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->ready_tick = -1;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
@@ -493,10 +526,25 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
+  wake_up_sleeping_threads();
   if (list_empty (&ready_list))
     return idle_thread;
   else
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
+}
+
+void
+wake_up_sleeping_threads(void)
+{
+  //printf("(wake_up_sleeping_threads): Waking up threads...\n");
+  int64_t now_tick = timer_ticks();
+  struct list_elem *e;
+  for (e = list_begin(&sleeping_list); e != list_tail(&sleeping_list) && list_entry( e, struct thread, elem )->ready_tick < now_tick; e = list_next( e ) )  
+    {
+      //printf("(wake_up_sleeping_threads): Waking up thread with READY_TICK=%" PRId64 " NOW_TICK=%" PRId64 "\n", list_entry( e, struct thread, elem )->ready_tick, now_tick);
+      list_remove( e ); // MUST remove E first. Otherwise SLEEPING_LIST will be corrupted.
+      thread_unblock( list_entry( e, struct thread, elem ) );
+    }
 }
 
 /* Completes a thread switch by activating the new thread's page
