@@ -33,7 +33,7 @@ switch_threads:
 	mov thread_stack_ofs, %edx
 
 	# Save current stack pointer to old thread's stack, if any.
-	movl SWITCH_CUR(%esp), %eax
+	movl SWITCH_CUR(%esp), %eax # %eax is the return value
 	movl %esp, (%eax,%edx,1)
 
 	# Restore stack pointer from new thread's stack.
