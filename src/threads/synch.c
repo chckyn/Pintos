@@ -60,7 +60,7 @@ sema_init (struct semaphore *sema, unsigned value)
 void
 sema_down (struct semaphore *sema) 
 {
-  enum intr_level old_level;
+  INTR_DISABLE_WRAP(
 
   ASSERT (sema != NULL);
   ASSERT (!intr_context ());
@@ -72,7 +72,8 @@ sema_down (struct semaphore *sema)
       thread_block ();
     }
   sema->value--;
-  intr_set_level (old_level);
+
+  );
 }
 
 /* Down or "P" operation on a semaphore, but only if the
@@ -83,12 +84,12 @@ sema_down (struct semaphore *sema)
 bool
 sema_try_down (struct semaphore *sema) 
 {
-  enum intr_level old_level;
   bool success;
 
   ASSERT (sema != NULL);
 
-  old_level = intr_disable ();
+  INTR_DISABLE_WRAP(
+
   if (sema->value > 0) 
     {
       sema->value--;
@@ -96,7 +97,8 @@ sema_try_down (struct semaphore *sema)
     }
   else
     success = false;
-  intr_set_level (old_level);
+
+  );
 
   return success;
 }
@@ -108,16 +110,14 @@ sema_try_down (struct semaphore *sema)
 void
 sema_up (struct semaphore *sema) 
 {
-  enum intr_level old_level;
-
   ASSERT (sema != NULL);
 
-  old_level = intr_disable ();
+  INTR_DISABLE_WRAP(
   if (!list_empty (&sema->waiters)) 
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   sema->value++;
-  intr_set_level (old_level);
+  );
 }
 
 static void sema_test_helper (void *sema_);

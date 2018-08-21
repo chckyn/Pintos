@@ -161,13 +161,12 @@ void
 thread_sleep_until( int64_t ready_tick )
 {
   //printf( "(thread_sleep_until) called with READY_TICK=%" PRId64 "\n", ready_tick );
-  enum intr_level old_level;
   struct thread *t = thread_current ();
   t->ready_tick = ready_tick;
   list_insert_ordered (&sleeping_list, &t->elem, &less_ticks_remaining, NULL );
-  old_level = intr_disable();
+  INTR_DISABLE_WRAP(
   thread_block();
-  intr_set_level (old_level); // Interrupts must be re-enabled prior to continuing.
+  );
 }
 
 static bool less_ticks_remaining( const struct list_elem *a, const struct list_elem *b, void *aux )
@@ -202,7 +201,6 @@ thread_create (const char *name, int priority,
   struct switch_entry_frame *ef;
   struct switch_threads_frame *sf;
   tid_t tid;
-  enum intr_level old_level;
 
   ASSERT (function != NULL);
 
@@ -218,7 +216,7 @@ thread_create (const char *name, int priority,
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack' 
      member cannot be observed. */
-  old_level = intr_disable ();
+  INTR_WRAP_DISABLE(
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -235,10 +233,10 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
-  intr_set_level (old_level);
 
   /* Add to run queue. */
   thread_unblock (t);
+  );
 
   return tid;
 }
@@ -270,15 +268,12 @@ thread_block (void)
 void
 thread_unblock (struct thread *t) 
 {
-  enum intr_level old_level;
-
   ASSERT (is_thread (t));
-
-  old_level = intr_disable ();
+  INTR_DISABLE_WRAP(
   ASSERT (t->status == THREAD_BLOCKED);
   list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
-  intr_set_level (old_level);
+  );
 }
 
 /* Returns the name of the running thread. */
@@ -342,16 +337,15 @@ void
 thread_yield (void) 
 {
   struct thread *cur = thread_current ();
-  enum intr_level old_level;
   
   ASSERT (!intr_context ());
 
-  old_level = intr_disable ();
+  INTR_DISABLE_WRAP(
   if (cur != idle_thread) 
     list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule ();
-  intr_set_level (old_level);
+  );
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.

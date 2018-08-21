@@ -15,7 +15,16 @@ enum intr_level intr_get_level (void);
 enum intr_level intr_set_level (enum intr_level);
 enum intr_level intr_enable (void);
 enum intr_level intr_disable (void);
-
+
+#define INTR_DISABLE_WRAP( CODE )               \
+  do {                                          \
+    enum intr_level old_level = intr_disable(); \
+    do {                                        \
+      CODE;                                     \
+    } while( 0 );                               \
+    intr_set_level( old_level );                \
+  } while ( 0 );
+
 /* Interrupt stack frame. */
 struct intr_frame
   {
