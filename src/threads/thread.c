@@ -76,7 +76,8 @@ static void init_thread (struct thread *, const char *name, int priority);
 static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
-static bool less_ticks_remaining( const struct list_elem *a, const struct list_elem *b, void *aux );
+LESS_THREAD_PROPERTY( ready_tick, sleep_elem );
+MORE_THREAD_PROPERTY( priority, ready_elem );
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 void thread_sleep_until( int64_t ready_tick );
@@ -170,14 +171,6 @@ thread_sleep_until( int64_t ready_tick )
   thread_block();
   );
 }
-
-static bool less_ticks_remaining( const struct list_elem *a, const struct list_elem *b, void *aux )
-{
-  ASSERT( aux == NULL ); // AUX should not be used.
-  //printf("(less_ticks_remaining): %" PRId64 " < %" PRId64 "\n", list_entry( a, struct thread, elem )->ready_tick, list_entry( b, struct thread, elem )->ready_tick );
-  return list_entry( a, struct thread, elem )->ready_tick < list_entry( b, struct thread, elem )->ready_tick;
-}
-
 
 /* Creates a new kernel thread named NAME with the given initial
    PRIORITY, which executes FUNCTION passing AUX as the argument,

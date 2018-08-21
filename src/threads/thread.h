@@ -140,4 +140,23 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+#define COMPARE_PROPERTY( PROPERTY, NAME, COMPARE, STRUCT, ELEM ) \
+static bool NAME ##_##STRUCT ##_##PROPERTY( const struct list_elem *a, const struct list_elem *b, void *aux ) { \
+  ASSERT( aux == NULL );                                                                        \
+  return list_entry( a, struct STRUCT, ELEM )->PROPERTY COMPARE \
+    list_entry( b, struct STRUCT, ELEM)->PROPERTY;            \
+}
+
+#define COMPARE_THREAD_PROPERTY( PROPERTY, ELEM, NAME, COMPARE )               \
+static bool NAME ##_##PROPERTY( const struct list_elem *a, const struct list_elem *b, void *aux ) { \
+  ASSERT( aux == NULL );                                                                        \
+  return list_entry( a, struct thread, ELEM )->PROPERTY COMPARE \
+    list_entry( b, struct thread, ELEM )->PROPERTY;            \
+}
+
+#define LESS_THREAD_PROPERTY( PROPERTY, ELEM ) COMPARE_THREAD_PROPERTY( PROPERTY, ELEM, less, < )
+#define MORE_THREAD_PROPERTY( PROPERTY, ELEM ) COMPARE_THREAD_PROPERTY( PROPERTY, ELEM, more, > )
+
+
+
 #endif /* threads/thread.h */
