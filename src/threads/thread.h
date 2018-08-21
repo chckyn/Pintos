@@ -90,9 +90,9 @@ struct thread
     int priority;                       /* Priority. */
     int64_t ready_tick;                 /* Tick when to wake up. */
     struct list_elem allelem;           /* List element for all threads list. */
-
-    /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+    struct list_elem ready_elem;              /* Ready List element. */
+    struct list_elem sleep_elem;              /* Sleep List element. */
+    struct list_elem waiter_elem;             /* Waiter List element. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

@@ -111,6 +111,7 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  list_insert_ordered (&ready_list, &initial_thread->ready_elem, &more_priority, NULL );
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -166,7 +167,7 @@ thread_sleep_until( int64_t ready_tick )
   //printf( "(thread_sleep_until) called with READY_TICK=%" PRId64 "\n", ready_tick );
   struct thread *t = thread_current ();
   t->ready_tick = ready_tick;
-  list_insert_ordered (&sleeping_list, &t->elem, &less_ticks_remaining, NULL );
+  list_insert_ordered (&sleeping_list, &t->sleep_elem, &less_ready_tick, NULL );
   INTR_DISABLE_WRAP(
   thread_block();
   );
@@ -211,7 +212,7 @@ thread_create (const char *name, int priority,
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack' 
      member cannot be observed. */
-  INTR_WRAP_DISABLE(
+  INTR_DISABLE_WRAP(
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -231,6 +232,8 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  thread_yield();
+
   );
 
   return tid;
@@ -248,7 +251,9 @@ thread_block (void)
   ASSERT (!intr_context ());
   ASSERT (intr_get_level () == INTR_OFF);
 
-  thread_current ()->status = THREAD_BLOCKED;
+  struct thread *t = thread_current();
+  t->status = THREAD_BLOCKED;
+  list_remove( &t->ready_elem ); // Remove T from ready_list.
   schedule ();
 }
 
@@ -264,9 +269,10 @@ void
 thread_unblock (struct thread *t) 
 {
   ASSERT (is_thread (t));
-  INTR_DISABLE_WRAP(
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+
+  INTR_DISABLE_WRAP(
+  list_insert_ordered (&ready_list, &t->ready_elem, &more_priority, NULL );
   t->status = THREAD_READY;
   );
 }
@@ -316,10 +322,11 @@ thread_exit (void)
   process_exit ();
 #endif
 
-  /* Remove thread from all threads list, set our status to dying,
+  /* Remove thread from all lists, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
+  list_remove (&thread_current()->ready_elem);
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
@@ -333,11 +340,10 @@ thread_yield (void)
 {
   struct thread *cur = thread_current ();
   
+  ASSERT( cur->status == THREAD_RUNNING );
   ASSERT (!intr_context ());
 
   INTR_DISABLE_WRAP(
-  if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule ();
   );
@@ -364,7 +370,15 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  struct thread *t = thread_current();
+  if ( t->priority == new_priority ) return;
+  
+  INTR_DISABLE_WRAP(
+    t->priority = new_priority;
+    list_remove( &t->ready_elem );
+    list_insert_ordered (&ready_list, &t->ready_elem, &more_priority, NULL );
+    thread_yield();
+  );
 }
 
 /* Returns the current thread's priority. */
@@ -425,7 +439,7 @@ idle (void *idle_started_ UNUSED)
     {
       /* Let someone else run. */
       intr_disable ();
-      thread_block ();
+      thread_yield ();
 
       /* Re-enable interrupts and wait for the next one.
 
@@ -521,23 +535,21 @@ static struct thread *
 next_thread_to_run (void) 
 {
   wake_up_sleeping_threads();
-  if (list_empty (&ready_list))
-    return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  ASSERT (!list_empty (&ready_list)); // idle_thread should always be in ready_list
+  return list_entry (list_begin (&ready_list), struct thread, ready_elem);
 }
 
 void
 wake_up_sleeping_threads(void)
 {
-  //printf("(wake_up_sleeping_threads): Waking up threads...\n");
   int64_t now_tick = timer_ticks();
   struct list_elem *e;
-  for (e = list_begin(&sleeping_list); e != list_tail(&sleeping_list) && list_entry( e, struct thread, elem )->ready_tick < now_tick; e = list_next( e ) )  
+  if ( list_empty( &sleeping_list ) ) return;
+  for (e = list_begin(&sleeping_list); e != list_tail(&sleeping_list) && list_entry( e, struct thread, sleep_elem )->ready_tick < now_tick;
+          e = list_next( e ) )  
     {
-      //printf("(wake_up_sleeping_threads): Waking up thread with READY_TICK=%" PRId64 " NOW_TICK=%" PRId64 "\n", list_entry( e, struct thread, elem )->ready_tick, now_tick);
-      list_remove( e ); // MUST remove E first. Otherwise SLEEPING_LIST will be corrupted.
-      thread_unblock( list_entry( e, struct thread, elem ) );
+      list_remove( e );
+      thread_unblock( list_entry( e, struct thread, sleep_elem ) );
     }
 }
 
