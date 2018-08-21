@@ -22,6 +22,8 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+#define PRI_IDLE -31                    /* Idle priority. */
+
 /* List of sleeping process in THREAD_SLEEPING state. This list is
    sorted by soonest to wake up first. */
 static struct list sleeping_list;
@@ -118,7 +120,7 @@ thread_start (void)
   /* Create the idle thread. */
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
-  thread_create ("idle", PRI_MIN, idle, &idle_started);
+  thread_create ("idle", PRI_IDLE, idle, &idle_started);
 
   /* Start preemptive thread scheduling. */
   intr_enable ();
@@ -486,7 +488,12 @@ static void
 init_thread (struct thread *t, const char *name, int priority)
 {
   ASSERT (t != NULL);
-  ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
+  // TODO This is buggy since someone could technically create
+  // a thread that would run round robin with the idle thread.
+  // This should be addressed in the round robin implementation
+  // to prevent the idle thread from ever participating in
+  // round robing.
+  ASSERT ( ( PRI_MIN <= priority && priority <= PRI_MAX ) || priority == PRI_IDLE );
   ASSERT (name != NULL);
 
   memset (t, 0, sizeof *t);
