@@ -94,6 +94,8 @@ struct thread
     struct list_elem ready_elem;              /* Ready List element. */
     struct list_elem sleep_elem;              /* Sleep List element. */
     struct list_elem waiter_elem;             /* Waiter List element. */
+    struct list_elem lock_elem;               /* Lock Priority List element. */
+    struct lock *lock_waiting_on;       /* Lock this thread needs to acquire to run. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -135,6 +137,8 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+void thread_reset_priority (void);
+void thread_change_priority (struct thread *t, int);
 
 int thread_get_nice (void);
 void thread_set_nice (int);

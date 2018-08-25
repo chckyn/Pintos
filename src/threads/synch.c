@@ -33,6 +33,8 @@
 #include "threads/thread.h"
 
 MORE_THREAD_PROPERTY( priority, waiter_elem );
+MORE_THREAD_PROPERTY( priority, lock_elem );
+void raise_holder_priority( struct lock *lock );
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -184,6 +186,7 @@ lock_init (struct lock *lock)
 
   lock->holder = NULL;
   sema_init (&lock->semaphore, 1);
+  list_init( &lock->priority_list );
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -201,8 +204,50 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  struct thread *t = thread_current();
+
+  // TODO substitute with INTR_DISABLE_WRAP
+  enum intr_level old_level = intr_disable();
+    list_insert_ordered( &lock->priority_list, &t->lock_elem, &more_priority_lock_elem, NULL );
+    t->lock_waiting_on = lock;
+    raise_holder_priority( lock );
+  intr_set_level( old_level );
+  
   sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
+
+  // TODO substitute with INTR_DISABLE_WRAP
+  old_level = intr_disable();
+    list_remove( &t->lock_elem );
+    t->lock_waiting_on = NULL;
+    lock->holder = t;
+    raise_holder_priority( lock );
+  intr_set_level( old_level );
+}
+
+void
+lock_update_priority( struct thread *t )
+{
+  struct lock *lock = t->lock_waiting_on;
+  if ( lock == NULL ) return;
+  
+  // TODO substitute with INTR_DISABLE_WRAP
+  enum intr_level old_level = intr_disable();
+    list_remove( &t->lock_elem );
+    list_insert_ordered( &lock->priority_list, &t->lock_elem, &more_priority_lock_elem, NULL );
+    raise_holder_priority( lock );
+  intr_set_level( old_level );
+}
+
+/* Helper function to raise the priority of the lock holder. */
+void
+raise_holder_priority( struct lock *lock )
+{
+  if ( lock->holder == NULL ) return;
+  if ( list_empty( &lock->priority_list ) )
+    thread_change_priority( lock->holder, lock->holder->original_priority );
+  else
+    thread_change_priority( lock->holder, list_entry( list_begin( &lock->priority_list ),
+                                                      struct thread, lock_elem )->priority );
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -220,8 +265,10 @@ lock_try_acquire (struct lock *lock)
   ASSERT (!lock_held_by_current_thread (lock));
 
   success = sema_try_down (&lock->semaphore);
-  if (success)
+  if (success) {
     lock->holder = thread_current ();
+    raise_holder_priority( lock );
+  }
   return success;
 }
 
@@ -237,7 +284,14 @@ lock_release (struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
 
   lock->holder = NULL;
-  sema_up (&lock->semaphore);
+
+  /* Disable interrupts to ensure thread yields as soon as
+     possible if necessary. */
+  // TODO insert INTR_DISABLE_WRAP
+  enum intr_level old_level = intr_disable();
+    sema_up (&lock->semaphore);
+    thread_reset_priority();
+  intr_set_level( old_level );
 }
 
 /* Returns true if the current thread holds LOCK, false

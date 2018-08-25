@@ -373,7 +373,12 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  struct thread *t = thread_current();
+  thread_change_priority( thread_current(), new_priority );
+}
+
+void
+thread_change_priority( struct thread *t, int new_priority )
+{
   if ( t->priority == new_priority ) return;
   if ( t->original_priority > new_priority )
     new_priority = t->original_priority;
@@ -382,8 +387,15 @@ thread_set_priority (int new_priority)
     t->priority = new_priority;
     list_remove( &t->ready_elem );
     list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
+    lock_update_priority( t );
     thread_yield();
   );
+}
+
+void
+thread_reset_priority (void)
+{
+  thread_set_priority( thread_current()->original_priority );
 }
 
 /* Returns the current thread's priority. */
@@ -518,6 +530,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->ready_tick = -1;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
+  t->lock_waiting_on = NULL;
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
