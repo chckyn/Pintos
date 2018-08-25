@@ -228,7 +228,7 @@ void
 lock_update_priority( struct thread *t )
 {
   struct lock *lock = t->lock_waiting_on;
-  if ( lock == NULL ) return;
+  if ( lock == NULL ) return; // This thread is not waiting to acquire a lock
   
   // TODO substitute with INTR_DISABLE_WRAP
   enum intr_level old_level = intr_disable();

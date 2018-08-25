@@ -82,7 +82,6 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 void thread_sleep_until( int64_t ready_tick );
 void wake_up_sleeping_threads(void);
-void update_priority_and_ready_list( struct thread *, int new_priority );
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -374,40 +373,41 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  struct thread *t = thread_current();
-  
-  INTR_DISABLE_WRAP(
-    t->original_priority = new_priority;
-    
-    update_priority_and_ready_list( t, new_priority );
-
-    thread_yield();
-  );
-
+  thread_change_priority( thread_current(), new_priority );
 }
 
 void
 thread_change_priority( struct thread *t, int new_priority )
 {
+  /* The current thread can change its original priority willy-nilly. */
+  if ( t == thread_current() )
+    {
+      INTR_DISABLE_WRAP (
+        t->original_priority = new_priority;
+      );
+    }
+
   if ( t->priority == new_priority ) return;
+
+  /* The lower bound for thread priority is the original priority. */
   if ( t->original_priority > new_priority )
     new_priority = t->original_priority;
   
   INTR_DISABLE_WRAP(
-    update_priority_and_ready_list( t, new_priority );
+
+    t->priority = new_priority;
     
-    lock_update_priority( t );
+    list_remove( &t->ready_elem );
+    list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
+
+    /* If this isn't the current thread, then we need to update the
+       list of priorities for the lock it is waiting to acquire. */
+    if ( t != thread_current() ) {
+      lock_update_priority( t );
+    }
+
     thread_yield();
   );
-}
-
-void
-update_priority_and_ready_list( struct thread *t, int new_priority )
-{
-  t->priority = new_priority;
-    
-  list_remove( &t->ready_elem );
-  list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
 }
 
 void
