@@ -93,6 +93,7 @@ struct thread
     struct list_elem allelem;           /* List element for all threads list. */
     struct list_elem ready_elem;              /* Ready List element. */
     struct list_elem sleep_elem;              /* Sleep List element. */
+    struct semaphore *waiting_sema;           /* Semaphore waiting for. */
     struct list_elem waiter_elem;             /* Waiter List element. */
     struct list_elem lock_elem;               /* Lock Priority List element. */
     struct lock *lock_waiting_on;       /* Lock this thread needs to acquire to run. */

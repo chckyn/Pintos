@@ -78,6 +78,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 LESS_THREAD_PROPERTY( ready_tick, sleep_elem );
 MORE_THREAD_PROPERTY( priority, ready_elem );
+MORE_THREAD_PROPERTY( priority, waiter_elem );
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 void thread_sleep_until( int64_t ready_tick );
@@ -110,8 +111,13 @@ thread_init (void)
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
+  list_insert_ordered (&ready_list, &initial_thread->ready_elem,
+                       &more_priority_ready_elem, NULL );
+  barrier(); // allocate_tid must wait for ready_list to be populated
+             // because it uses locks. The locks assume that a running
+             // thread is in ready_list when calling
+             // thread_set_priority.
   initial_thread->tid = allocate_tid ();
-  list_insert_ordered (&ready_list, &initial_thread->ready_elem, &more_priority_ready_elem, NULL );
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -373,38 +379,50 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_change_priority( thread_current(), new_priority );
+  struct thread *t = thread_current();
+  INTR_DISABLE_WRAP (
+    t->original_priority = new_priority;
+
+    if ( t->lock_waiting_on != NULL )
+      t->priority = list_entry( list_begin( &t->lock_waiting_on->priority_list ),
+                                struct thread, lock_elem )->priority;
+
+    list_remove( &t->ready_elem );
+    list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
+    
+    thread_yield();
+  );
 }
 
+/* Assume the caller of this function knows what its doing. */
 void
 thread_change_priority( struct thread *t, int new_priority )
 {
-  /* The current thread can change its original priority willy-nilly. */
-  if ( t == thread_current() )
-    {
-      INTR_DISABLE_WRAP (
-        t->original_priority = new_priority;
-      );
-    }
-
-  if ( t->priority == new_priority ) return;
-
   /* The lower bound for thread priority is the original priority. */
   if ( t->original_priority > new_priority )
     new_priority = t->original_priority;
+
+  if ( t->priority == new_priority ) return;
   
   INTR_DISABLE_WRAP(
-
     t->priority = new_priority;
-    
-    list_remove( &t->ready_elem );
-    list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
 
-    /* If this isn't the current thread, then we need to update the
-       list of priorities for the lock it is waiting to acquire. */
-    if ( t != thread_current() ) {
-      lock_update_priority( t );
-    }
+    if ( t->status == THREAD_RUNNING || t->status == THREAD_READY )
+      {
+        list_remove( &t->ready_elem );
+        list_insert_ordered (&ready_list, &t->ready_elem,
+                             &more_priority_ready_elem, NULL );
+
+      }
+    else
+      {
+        ASSERT( t->waiting_sema != NULL );
+        list_remove( &t->waiter_elem );
+        list_insert_ordered (&t->waiting_sema->waiters, &t->waiter_elem,
+                             &more_priority_waiter_elem, NULL );
+      }
+
+    lock_update_priority( t );
 
     thread_yield();
   );
