@@ -111,7 +111,7 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
-  list_insert_ordered (&ready_list, &initial_thread->ready_elem, &more_priority, NULL );
+  list_insert_ordered (&ready_list, &initial_thread->ready_elem, &more_priority_ready_elem, NULL );
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -167,7 +167,7 @@ thread_sleep_until( int64_t ready_tick )
   //printf( "(thread_sleep_until) called with READY_TICK=%" PRId64 "\n", ready_tick );
   struct thread *t = thread_current ();
   t->ready_tick = ready_tick;
-  list_insert_ordered (&sleeping_list, &t->sleep_elem, &less_ready_tick, NULL );
+  list_insert_ordered (&sleeping_list, &t->sleep_elem, &less_ready_tick_sleep_elem, NULL );
   INTR_DISABLE_WRAP(
   thread_block();
   );
@@ -272,7 +272,7 @@ thread_unblock (struct thread *t)
   ASSERT (t->status == THREAD_BLOCKED);
 
   INTR_DISABLE_WRAP(
-  list_insert_ordered (&ready_list, &t->ready_elem, &more_priority, NULL );
+  list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
   t->status = THREAD_READY;
   );
 }
@@ -376,7 +376,7 @@ thread_set_priority (int new_priority)
   INTR_DISABLE_WRAP(
     t->priority = new_priority;
     list_remove( &t->ready_elem );
-    list_insert_ordered (&ready_list, &t->ready_elem, &more_priority, NULL );
+    list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
     thread_yield();
   );
 }

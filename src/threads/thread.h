@@ -149,7 +149,7 @@ static bool NAME ##_##STRUCT ##_##PROPERTY( const struct list_elem *a, const str
 }
 
 #define COMPARE_THREAD_PROPERTY( PROPERTY, ELEM, NAME, COMPARE )               \
-static bool NAME ##_##PROPERTY( const struct list_elem *a, const struct list_elem *b, void *aux ) { \
+static bool NAME ##_##PROPERTY##_##ELEM( const struct list_elem *a, const struct list_elem *b, void *aux ) { \
   ASSERT( aux == NULL );                                                                        \
   return list_entry( a, struct thread, ELEM )->PROPERTY COMPARE \
     list_entry( b, struct thread, ELEM )->PROPERTY;            \
