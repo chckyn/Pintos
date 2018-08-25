@@ -252,6 +252,7 @@ thread_block (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   struct thread *t = thread_current();
+  ASSERT (t->priority >= t->original_priority);
   t->status = THREAD_BLOCKED;
   list_remove( &t->ready_elem ); // Remove T from ready_list.
   schedule ();
@@ -270,7 +271,8 @@ thread_unblock (struct thread *t)
 {
   ASSERT (is_thread (t));
   ASSERT (t->status == THREAD_BLOCKED);
-
+  ASSERT (t->priority >= t->original_priority);
+  
   INTR_DISABLE_WRAP(
   list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
   t->status = THREAD_READY;
@@ -300,7 +302,8 @@ thread_current (void)
      recursion can cause stack overflow. */
   ASSERT (is_thread (t));
   ASSERT (t->status == THREAD_RUNNING);
-
+  ASSERT (t->priority >= t->original_priority);
+  
   return t;
 }
 
@@ -372,6 +375,8 @@ thread_set_priority (int new_priority)
 {
   struct thread *t = thread_current();
   if ( t->priority == new_priority ) return;
+  if ( t->original_priority > new_priority )
+    new_priority = t->original_priority;
   
   INTR_DISABLE_WRAP(
     t->priority = new_priority;
@@ -385,6 +390,7 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void) 
 {
+  ASSERT( thread_current()->priority >= thread_current()->original_priority );
   return thread_current ()->priority;
 }
 
