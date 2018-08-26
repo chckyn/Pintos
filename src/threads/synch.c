@@ -218,7 +218,8 @@ lock_acquire (struct lock *lock)
 
   struct thread *t = thread_current();
 
-  INTR_DISABLE_WRAP(
+  /* INTR_DISABLE_WRAP( */
+  enum intr_level old_level = intr_disable();
                     
     list_insert_ordered( &lock->priority_list, &t->lock_elem, &more_priority_lock_elem, NULL );
     t->lock_waiting_on = lock;
@@ -229,7 +230,8 @@ lock_acquire (struct lock *lock)
     lock->holder = t;
     raise_holder_priority( lock );
 
-  );
+  intr_set_level( old_level );
+  /* ); */
 }
 
 void
