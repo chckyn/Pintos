@@ -78,6 +78,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 LESS_THREAD_PROPERTY( ready_tick, sleep_elem );
 MORE_THREAD_PROPERTY( priority, ready_elem );
+MORE_THREAD_PROPERTY( priority, waiter_elem );
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 void thread_sleep_until( int64_t ready_tick );
@@ -110,8 +111,13 @@ thread_init (void)
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
+  list_insert_ordered (&ready_list, &initial_thread->ready_elem,
+                       &more_priority_ready_elem, NULL );
+  barrier(); // allocate_tid must wait for ready_list to be populated
+             // because it uses locks. The locks assume that a running
+             // thread is in ready_list when calling
+             // thread_set_priority.
   initial_thread->tid = allocate_tid ();
-  list_insert_ordered (&ready_list, &initial_thread->ready_elem, &more_priority_ready_elem, NULL );
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -252,6 +258,7 @@ thread_block (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   struct thread *t = thread_current();
+  ASSERT (t->priority >= t->original_priority);
   t->status = THREAD_BLOCKED;
   list_remove( &t->ready_elem ); // Remove T from ready_list.
   schedule ();
@@ -270,7 +277,8 @@ thread_unblock (struct thread *t)
 {
   ASSERT (is_thread (t));
   ASSERT (t->status == THREAD_BLOCKED);
-
+  ASSERT (t->priority >= t->original_priority);
+  
   INTR_DISABLE_WRAP(
   list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
   t->status = THREAD_READY;
@@ -300,7 +308,8 @@ thread_current (void)
      recursion can cause stack overflow. */
   ASSERT (is_thread (t));
   ASSERT (t->status == THREAD_RUNNING);
-
+  ASSERT (t->priority >= t->original_priority);
+  
   return t;
 }
 
@@ -371,20 +380,64 @@ void
 thread_set_priority (int new_priority) 
 {
   struct thread *t = thread_current();
+  INTR_DISABLE_WRAP (
+    t->original_priority = new_priority;
+
+    if ( list_empty( &t->locks_held ) )
+      t->priority = t->original_priority;
+
+    list_remove( &t->ready_elem );
+    list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
+    
+    thread_yield();
+  );
+}
+
+/* Assume the caller of this function knows what its doing. */
+void
+thread_change_priority( struct thread *t, int new_priority )
+{
+  /* The lower bound for thread priority is the original priority. */
+  if ( t->original_priority > new_priority )
+    new_priority = t->original_priority;
+
   if ( t->priority == new_priority ) return;
   
   INTR_DISABLE_WRAP(
     t->priority = new_priority;
-    list_remove( &t->ready_elem );
-    list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
+
+    if ( t->status == THREAD_RUNNING || t->status == THREAD_READY )
+      {
+        list_remove( &t->ready_elem );
+        list_insert_ordered (&ready_list, &t->ready_elem,
+                             &more_priority_ready_elem, NULL );
+
+      }
+    else
+      {
+        ASSERT( t->waiting_sema != NULL );
+        list_remove( &t->waiter_elem );
+        list_insert_ordered (&t->waiting_sema->waiters, &t->waiter_elem,
+                             &more_priority_waiter_elem, NULL );
+      }
+
+    lock_update_priority( t );
+
     thread_yield();
   );
+}
+
+void
+thread_reset_priority (void)
+{
+  thread_set_priority( thread_current()->original_priority );
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
+  ASSERT( thread_current()->priority >= thread_current()->original_priority );
   return thread_current ()->priority;
 }
 
@@ -512,6 +565,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->ready_tick = -1;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
+  t->lock_waiting_on = NULL;
+  list_init( &t->locks_held );
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
