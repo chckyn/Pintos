@@ -36,7 +36,8 @@ void lock_update_priority (struct thread*);
 /* Condition variable. */
 struct condition 
   {
-    struct list waiters;        /* List of waiting threads. */
+    struct semaphore semaphore;
+    int waiting;
   };
 
 void cond_init (struct condition *);
