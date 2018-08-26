@@ -280,8 +280,13 @@ thread_unblock (struct thread *t)
   ASSERT (t->priority >= t->original_priority);
   
   INTR_DISABLE_WRAP(
-  list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
-  t->status = THREAD_READY;
+
+    if ( t->waiting_sema != NULL )
+      list_remove( &t->waiter_elem );
+    
+    list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
+    t->status = THREAD_READY;
+    
   );
 }
 
@@ -566,6 +571,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
   t->lock_waiting_on = NULL;
+  t->waiting_sema = NULL;
   list_init( &t->locks_held );
 }
 
