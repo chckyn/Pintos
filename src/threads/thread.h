@@ -97,6 +97,7 @@ struct thread
     struct list_elem waiter_elem;             /* Waiter List element. */
     struct list_elem lock_elem;               /* Lock Priority List element. */
     struct lock *lock_waiting_on;       /* Lock this thread needs to acquire to run. */
+    struct list locks_held;            /* List of locks this thread holds. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

@@ -383,9 +383,8 @@ thread_set_priority (int new_priority)
   INTR_DISABLE_WRAP (
     t->original_priority = new_priority;
 
-    if ( t->lock_waiting_on != NULL )
-      t->priority = list_entry( list_begin( &t->lock_waiting_on->priority_list ),
-                                struct thread, lock_elem )->priority;
+    if ( list_empty( &t->locks_held ) )
+      t->priority = t->original_priority;
 
     list_remove( &t->ready_elem );
     list_insert_ordered (&ready_list, &t->ready_elem, &more_priority_ready_elem, NULL );
@@ -567,6 +566,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
   t->lock_waiting_on = NULL;
+  list_init( &t->locks_held );
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

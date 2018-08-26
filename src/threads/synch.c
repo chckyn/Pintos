@@ -227,7 +227,12 @@ lock_acquire (struct lock *lock)
     
     sema_down (&lock->semaphore);
 
+    t->lock_waiting_on = NULL;
+    list_remove( &t->lock_elem );
+    
     lock->holder = t;
+    list_push_front( &t->locks_held, &lock->held_elem );
+    
     raise_holder_priority( lock );
 
   intr_set_level( old_level );
@@ -252,10 +257,10 @@ void
 raise_holder_priority( struct lock *lock )
 {
   if ( lock->holder == NULL ) return;
-  ASSERT ( !list_empty( &lock->priority_list ) );
-  
-  thread_change_priority( lock->holder, list_entry( list_begin( &lock->priority_list ),
-                                                    struct thread, lock_elem )->priority );
+
+  if ( !list_empty( &lock->priority_list ) )
+    thread_change_priority( lock->holder, list_entry( list_begin( &lock->priority_list ),
+                                                      struct thread, lock_elem )->priority );
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -276,9 +281,8 @@ lock_try_acquire (struct lock *lock)
   if (success) {
     struct thread *t = thread_current();
     INTR_DISABLE_WRAP(
-      lock->holder = thread_current ();
-      list_insert_ordered( &lock->priority_list, &t->lock_elem, &more_priority_lock_elem, NULL );
-      t->lock_waiting_on = lock;
+      lock->holder = t;
+      list_push_front( &t->locks_held, &lock->held_elem );
       raise_holder_priority( lock );
     );
   }
@@ -303,9 +307,14 @@ lock_release (struct lock *lock)
   struct thread *t = thread_current();
   INTR_DISABLE_WRAP(
     sema_up (&lock->semaphore);
-    list_remove( &t->lock_elem );
-    t->lock_waiting_on = NULL;
-    thread_reset_priority();
+    ASSERT ( !list_empty( &t->locks_held ) );
+    list_pop_front( &t->locks_held );
+
+    if ( list_empty( &t->locks_held ) )
+      thread_reset_priority();
+    else
+      raise_holder_priority( list_entry( list_begin( &t->locks_held ),
+                                         struct lock, held_elem ) );
   );
 }
 
