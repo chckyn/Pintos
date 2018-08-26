@@ -371,8 +371,8 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
   
-  lock_release (lock);
   cond->waiting++;
+  lock_release (lock);
   sema_down (&cond->semaphore);
   lock_acquire (lock);
 }
