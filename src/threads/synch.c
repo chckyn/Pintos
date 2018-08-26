@@ -65,7 +65,7 @@ void
 sema_down (struct semaphore *sema) 
 {
   INTR_DISABLE_WRAP(
-
+    
   ASSERT (sema != NULL);
   ASSERT (!intr_context ());
 
@@ -77,13 +77,16 @@ sema_down (struct semaphore *sema)
   
   while (sema->value == 0) 
     {
-      list_insert_ordered (&sema->waiters, &thread_current ()->waiter_elem, &more_priority_waiter_elem, NULL);
+      list_insert_ordered (&sema->waiters, &t->waiter_elem,
+                           &more_priority_waiter_elem, NULL);
       in_list = true;
       thread_block ();
     }
   if ( in_list )
     list_remove( &t->waiter_elem );
+  
   t->waiting_sema = NULL;
+               
   sema->value--;
 
   );
