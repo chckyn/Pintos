@@ -64,8 +64,9 @@ sema_init (struct semaphore *sema, unsigned value)
 void
 sema_down (struct semaphore *sema) 
 {
-  INTR_DISABLE_WRAP(
-
+  /* INTR_DISABLE_WRAP( */
+  enum intr_level old_level = intr_disable();
+  
   ASSERT (sema != NULL);
   ASSERT (!intr_context ());
 
@@ -86,7 +87,8 @@ sema_down (struct semaphore *sema)
                
   sema->value--;
 
-  );
+  intr_set_level( old_level );
+  /* ); */
 }
 
 /* Down or "P" operation on a semaphore, but only if the
