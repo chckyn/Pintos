@@ -74,13 +74,14 @@ sema_down (struct semaphore *sema)
 
   /* Enable access to the semaphore this thread is waiting on. */
   t->waiting_sema = sema;
-  
-  while (sema->value == 0) 
-    {
+
+  if ( sema->value == 0 )
       list_insert_ordered (&sema->waiters, &t->waiter_elem,
                            &more_priority_waiter_elem, NULL);
+  
+  while ( sema->value == 0 ) 
+    {
       thread_block ();
-      list_remove( &t->waiter_elem );
     }
   
   t->waiting_sema = NULL;
