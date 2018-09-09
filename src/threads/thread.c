@@ -598,7 +598,12 @@ next_thread_to_run (void)
 {
   wake_up_sleeping_threads();
   ASSERT (!list_empty (&ready_list)); // idle_thread should always be in ready_list
-  return list_entry (list_begin (&ready_list), struct thread, ready_elem);
+  /* Enforce round-robin ordering so this process will only run at the
+     next time slice if its the only process of its priority level. */
+  struct thread *t = list_entry (list_pop_front (&ready_list), struct thread, ready_elem);
+  list_insert_ordered (&ready_list, &t->ready_elem,
+                       &more_priority_ready_elem, NULL );
+  return t;
 }
 
 void
